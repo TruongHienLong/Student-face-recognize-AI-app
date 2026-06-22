@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Nhận diện trực tiếp{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-title"><i class="fas fa-camera"></i> Nhận diện khuôn mặt theo thời gian thực</div>
+    <div class="row">
+        <div class="col-md-8">
+            <div class="video-container">
+                <img src="{{ url_for('video_feed') }}" alt="Video Feed" style="width:100%; border-radius:15px;">
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <i class="fas fa-list-alt"></i> Kết quả nhận diện gần đây
+                </div>
+                <div class="card-body" id="recognition-results" style="max-height: 400px; overflow-y: auto;">
+                    <p class="text-muted">Chưa có kết quả nào. Hãy hướng mặt vào camera.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <p class="mt-3 text-muted text-center">
+        Hệ thống đang tự động nhận diện khuôn mặt. Khi phát hiện sinh viên, thông tin sẽ hiển thị ở bảng bên cạnh.
+    </p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function fetchRecentRecognitions() {
+    fetch('/api/recent')
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('recognition-results');
+            if (!data || data.length === 0) {
+                container.innerHTML = '<p class="text-muted">Chưa có kết quả nào. Hãy hướng mặt vào camera.</p>';
+                return;
+            }
+            let html = '<ul class="list-group list-group-flush">';
+            data.forEach(item => {
+                html += `
+                    <li class="list-group-item">
+                        <strong><i class="fas fa-user-graduate"></i> ${escapeHtml(item.name)}</strong><br>
+                        <small><i class="fas fa-id-card"></i> MSSV: ${escapeHtml(item.student_id)}</small><br>
+                        <small><i class="fas fa-hashtag"></i> Roll: ${escapeHtml(item.roll_no)}</small>
+                    </li>
+                `;
+            });
+            html += '</ul>';
+            container.innerHTML = html;
+        })
+        .catch(err => console.error('Lỗi khi lấy kết quả:', err));
+}
+
+// Hàm đơn giản để tránh XSS (nếu tên có ký tự đặc biệt)
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/[&<>]/g, function(m) {
+        if (m === '&') return '&amp;';
+        if (m === '<') return '&lt;';
+        if (m === '>') return '&gt;';
+        return m;
+    });
+}
+
+// Cập nhật mỗi 2 giây
+setInterval(fetchRecentRecognitions, 2000);
+// Gọi ngay khi tải trang
+fetchRecentRecognitions();
+</script>
+{% endblock %}
