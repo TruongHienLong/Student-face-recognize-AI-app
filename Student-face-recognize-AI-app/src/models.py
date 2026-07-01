@@ -54,9 +54,13 @@ class StudentForm(FlaskForm):
 
 
 class AttendanceFilterForm(FlaskForm):
+<<<<<<< HEAD
     # Giữ lại filter_date để tương thích ngược (lọc đúng 1 ngày, dùng cho /api/attendance)
     filter_date = DateField("Date", validators=[Optional()], format="%Y-%m-%d")
     # Thêm khoảng ngày + mã sinh viên để xem LỊCH SỬ điểm danh
     start_date = DateField("From", validators=[Optional()], format="%Y-%m-%d")
     end_date = DateField("To", validators=[Optional()], format="%Y-%m-%d")
     student_id = StringField("Student ID", validators=[Optional()])
+=======
+    filter_date = DateField("Date", validators=[Optional()], format="%Y-%m-%d")
+>>>>>>> 14762f9e35b4ade03626a79add924af078a72e85

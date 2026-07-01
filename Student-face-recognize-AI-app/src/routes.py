@@ -121,6 +121,7 @@ def video_feed():
 
 @app.route("/attendance")
 def attendance():
+<<<<<<< HEAD
     """
     Trang xem LỊCH SỬ điểm danh.
     Hỗ trợ 2 kiểu lọc:
@@ -146,6 +147,13 @@ def attendance():
         form=form,
         filter_date=filter_date,
     )
+=======
+    form = AttendanceFilterForm(request.args)
+    filter_date = form.filter_date.data if form.filter_date.data else None
+    records = get_attendance_records(filter_date)
+    return render_template("attendance.html", records=records, form=form,
+                           filter_date=filter_date)
+>>>>>>> 14762f9e35b4ade03626a79add924af078a72e85
 
 
 @app.route("/reload_encodings")
@@ -173,6 +181,7 @@ def api_recent():
 
 @app.route("/api/attendance")
 def api_attendance():
+<<<<<<< HEAD
     """
     Return attendance records as JSON.
     Optional query params:
@@ -206,6 +215,18 @@ def api_attendance():
         end_date=end_date,
         student_id=student_id,
     )
+=======
+    """Return attendance records as JSON. Optional: ?date=YYYY-MM-DD"""
+    date_str = request.args.get("date")
+    filter_date = None
+    if date_str:
+        try:
+            filter_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+
+    records = get_attendance_records(filter_date)
+>>>>>>> 14762f9e35b4ade03626a79add924af078a72e85
     result = [
         {
             "id": att.id,

@@ -40,6 +40,7 @@ def mark_attendance(student_id: str) -> bool:
         return False
 
 
+<<<<<<< HEAD
 def get_attendance_records(filter_date=None, start_date=None, end_date=None, student_id=None):
     """
     Query attendance joined with Student.
@@ -47,6 +48,12 @@ def get_attendance_records(filter_date=None, start_date=None, end_date=None, stu
     - filter_date: lọc đúng 1 ngày (tương thích ngược, ưu tiên cao nhất nếu được truyền).
     - start_date / end_date: lọc theo khoảng ngày (dùng để xem LỊCH SỬ điểm danh).
     - student_id: lọc theo 1 sinh viên cụ thể.
+=======
+def get_attendance_records(filter_date=None):
+    """
+    Query attendance joined with Student.
+    filter_date: a date object or None (returns all).
+>>>>>>> 14762f9e35b4ade03626a79add924af078a72e85
     Returns list of (Attendance, Student) tuples.
     """
     from models import Attendance, Student  # avoid circular import
@@ -56,6 +63,7 @@ def get_attendance_records(filter_date=None, start_date=None, end_date=None, stu
         .join(Student, Attendance.student_id == Student.studentID)
         .order_by(Attendance.date.desc(), Attendance.time_in.desc())
     )
+<<<<<<< HEAD
 
     if filter_date:
         query = query.filter(Attendance.date == filter_date)
@@ -85,3 +93,8 @@ def get_attendance_history(student_id: str, start_date=None, end_date=None):
         query = query.filter(Attendance.date <= end_date)
 
     return query.order_by(Attendance.date.desc(), Attendance.time_in.desc()).all()
+=======
+    if filter_date:
+        query = query.filter(Attendance.date == filter_date)
+    return query.all()
+>>>>>>> 14762f9e35b4ade03626a79add924af078a72e85

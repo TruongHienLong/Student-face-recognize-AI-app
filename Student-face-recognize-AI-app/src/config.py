@@ -42,4 +42,8 @@ _users_lock = threading.RLock()
 users_data: dict = {}
 
 # Recent recognitions shown on /live page (max 10, deduplicated per 5 s)
+<<<<<<< HEAD
 recent_recognitions: list = []
+=======
+recent_recognitions: list = []
+>>>>>>> 14762f9e35b4ade03626a79add924af078a72e85
