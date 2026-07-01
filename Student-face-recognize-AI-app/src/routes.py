@@ -1,0 +1,237 @@
+"""
+MODULE 5 – routes.py
+Trách nhiệm: Tất cả Flask routes (HTML pages + JSON APIs).
+Người phụ trách: Member 5
+"""
+
+import os
+import logging
+from datetime import datetime
+
+from flask import (
+    render_template, redirect, url_for, Response,
+    send_from_directory, request, flash, jsonify,
+)
+
+from config import app, db, _users_lock, users_data, recent_recognitions
+from models import Student, Attendance, StudentForm, AttendanceFilterForm
+from face_utils import (
+    release_camera, generate_frames,
+    get_face_encoding, load_all_students_encodings,
+)
+from attendance_utils import get_attendance_records
+
+logger = logging.getLogger(__name__)
+
+
+def allowed_file(filename: str) -> bool:
+    return (
+        "." in filename
+        and filename.rsplit(".", 1)[1].lower() in app.config["ALLOWED_EXTENSIONS"]
+    )
+
+
+# ── HTML Routes ───────────────────────────────────────────────────────────────
+@app.route("/")
+def home():
+    release_camera()
+    return render_template("Home.html")
+
+
+@app.route("/add_student", methods=["GET", "POST"])
+def add_student():
+    form = StudentForm()
+    if form.validate_on_submit():
+        if Student.query.filter_by(studentID=form.studentID.data).first():
+            flash("Student ID already exists!", "danger")
+            return redirect(url_for("add_student"))
+
+        student = Student(
+            studentID=form.studentID.data,
+            name=form.name.data,
+            roll_no=form.roll_no.data,
+            class_name=form.class_name.data,
+        )
+
+        file = form.photo.data
+        if not (file and allowed_file(file.filename)):
+            flash("Please upload a valid photo (jpg, jpeg, png, gif).", "danger")
+            return redirect(url_for("add_student"))
+
+        filename = f"{form.studentID.data}_{form.name.data}_{form.roll_no.data}.jpg"
+        file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+        file.save(file_path)
+
+        encoding = get_face_encoding(file_path)
+        if encoding is None:
+            os.remove(file_path)
+            flash("No clear face detected in the photo. Please try again.", "danger")
+            return redirect(url_for("add_student"))
+
+        student.photo = filename
+        db.session.add(student)
+        db.session.commit()
+
+        with _users_lock:
+            users_data[student.studentID] = {
+                "name": student.name,
+                "roll_no": student.roll_no,
+                "encoding": encoding,
+            }
+
+        flash("Student added successfully!", "success")
+        return redirect(url_for("students"))
+
+    return render_template("add_student.html", form=form)
+
+
+@app.route("/delete_student/<int:id>", methods=["POST"])
+def delete_student(id):
+    student = Student.query.get_or_404(id)
+    with _users_lock:
+        users_data.pop(student.studentID, None)
+    if student.photo:
+        fp = os.path.join(app.config["UPLOAD_FOLDER"], student.photo)
+        if os.path.exists(fp):
+            os.remove(fp)
+    db.session.delete(student)
+    db.session.commit()
+    flash("Student deleted.", "success")
+    return redirect(url_for("students"))
+
+
+@app.route("/students")
+def students():
+    all_students = Student.query.order_by(Student.studentID).all()
+    return render_template("students.html", students=all_students)
+
+
+@app.route("/live")
+def live():
+    return render_template("video_feed_live.html")
+
+
+@app.route("/video_feed")
+def video_feed():
+    return Response(
+        generate_frames(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+@app.route("/attendance")
+def attendance():
+    """
+    Trang xem LỊCH SỬ điểm danh.
+    Hỗ trợ 2 kiểu lọc:
+      - ?filter_date=YYYY-MM-DD  -> lọc đúng 1 ngày (giữ tương thích cũ)
+      - ?start_date=...&end_date=...&student_id=...  -> lọc theo khoảng ngày / theo sinh viên
+    """
+    form = AttendanceFilterForm(request.args, meta={"csrf": False})
+
+    filter_date = form.filter_date.data or None
+    start_date = form.start_date.data or None
+    end_date = form.end_date.data or None
+    student_id = (form.student_id.data or "").strip() or None
+
+    records = get_attendance_records(
+        filter_date=filter_date,
+        start_date=start_date,
+        end_date=end_date,
+        student_id=student_id,
+    )
+    return render_template(
+        "attendance_history.html",
+        records=records,
+        form=form,
+        filter_date=filter_date,
+    )
+
+
+@app.route("/reload_encodings")
+def reload_encodings():
+    load_all_students_encodings()
+    flash("Face encodings reloaded.", "success")
+    return redirect(url_for("students"))
+
+
+@app.route("/media/<filename>")
+def media(filename):
+    return send_from_directory(app.config["UPLOAD_FOLDER"], filename)
+
+
+# ── JSON API Routes ───────────────────────────────────────────────────────────
+@app.route("/api/recent")
+def api_recent():
+    """Return recently recognised students (last 10, no timestamp)."""
+    result = [
+        {"student_id": r["student_id"], "name": r["name"], "roll_no": r["roll_no"]}
+        for r in recent_recognitions
+    ]
+    return jsonify(result)
+
+
+@app.route("/api/attendance")
+def api_attendance():
+    """
+    Return attendance records as JSON.
+    Optional query params:
+      - date=YYYY-MM-DD              -> lọc đúng 1 ngày
+      - start_date=YYYY-MM-DD        -> lọc từ ngày
+      - end_date=YYYY-MM-DD          -> lọc đến ngày
+      - student_id=SV001             -> lọc theo 1 sinh viên (dùng để xem lịch sử của riêng SV đó)
+    """
+    def parse_date(param_name):
+        raw = request.args.get(param_name)
+        if not raw:
+            return None
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            return "invalid"
+
+    filter_date = parse_date("date")
+    start_date = parse_date("start_date")
+    end_date = parse_date("end_date")
+
+    for value, name in [(filter_date, "date"), (start_date, "start_date"), (end_date, "end_date")]:
+        if value == "invalid":
+            return jsonify({"error": f"Invalid {name} format. Use YYYY-MM-DD"}), 400
+
+    student_id = request.args.get("student_id") or None
+
+    records = get_attendance_records(
+        filter_date=filter_date,
+        start_date=start_date,
+        end_date=end_date,
+        student_id=student_id,
+    )
+    result = [
+        {
+            "id": att.id,
+            "student_id": att.student_id,
+            "name": stu.name,
+            "roll_no": stu.roll_no,
+            "class_name": stu.class_name,
+            "date": att.date.isoformat(),
+            "time_in": att.time_in.strftime("%H:%M:%S"),
+        }
+        for att, stu in records
+    ]
+    return jsonify(result)
+
+
+@app.route("/api/students")
+def api_students():
+    """Return all students as JSON."""
+    all_students = Student.query.order_by(Student.studentID).all()
+    return jsonify([
+        {
+            "studentID": s.studentID,
+            "name": s.name,
+            "roll_no": s.roll_no,
+            "class_name": s.class_name,
+            "photo": s.photo,
+        }
+        for s in all_students
+    ])
